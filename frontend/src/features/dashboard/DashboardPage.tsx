@@ -104,7 +104,7 @@ export const DashboardPage = () => {
   const displayMessage = statusMessages[status][language === "mk" ? "mk" : "en"]
 
   return (
-    <section>
+    <section className="dashboard-page">
       <div className="dashboard__header">
         <div>
           <p className="eyebrow">{t("financialImpact")}</p>
