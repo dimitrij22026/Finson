@@ -14,8 +14,13 @@ import { CryptoPage } from "./features/crypto/CryptoPage"
 import { StocksPage } from "./features/stocks/StocksPage"
 import { TransactionsPage } from "./features/transactions/TransactionsPage"
 import { AboutPage } from "./features/about/AboutPage"
+import { LandingPage } from "./features/landing/LandingPage"
 
 export const router = createBrowserRouter([
+  {
+    path: "/welcome",
+    element: <LandingPage />,
+  },
   {
     path: "/auth/login",
     element: <LoginPage />,
