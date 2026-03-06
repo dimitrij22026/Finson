@@ -6,53 +6,6 @@ router = APIRouter(prefix="/market")
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
 
 
-@router.get("/crypto/coins")
-async def get_crypto_coins(
-    page: int = 1,
-    per_page: int = 50,
-    vs_currency: str = "usd",
-    sort_by: str = "market_cap_desc",
-    price_change_timeframe: str = "24h",
-    sparkline: str = "true",
-    category: str = None
-):
-    url = "https://api.coingecko.com/api/v3/coins/markets"
-    params = {
-        "vs_currency": vs_currency,
-        "order": sort_by,
-        "per_page": per_page,
-        "page": page,
-        "sparkline": sparkline,
-        "price_change_percentage": price_change_timeframe
-    }
-    if category and category != "all":
-        params["category"] = category
-
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return resp.json()
-
-
-@router.get("/crypto/chart/{coin_id}")
-async def get_crypto_chart(
-    coin_id: str = Path(...),
-    days: str = "1",
-    vs_currency: str = "usd"
-):
-    url = f"https://api.coingecko.com/api/v3/coins/{coin_id}/market_chart"
-    params = {
-        "vs_currency": vs_currency,
-        "days": days
-    }
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-        return resp.json()
-
-
 @router.get("/crypto/list")
 async def get_crypto_list(count: int = 50, start: int = 0):
     url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
@@ -126,6 +79,9 @@ async def get_crypto_chart_yahoo(
                     points.append({"t": t * 1000, "price": c})
             return points
         except Exception as e:
+            print("ERROR IN CHART:", e)
+            import traceback
+            traceback.print_exc()
             return []
 
 

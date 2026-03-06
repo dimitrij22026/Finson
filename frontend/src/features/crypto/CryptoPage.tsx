@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react"
+﻿import { useCallback, useEffect, useRef, useState, useMemo } from "react"
 import { createPortal } from "react-dom"
 import {
   Area,
@@ -36,6 +36,7 @@ interface CryptoListResponse {
 interface ChartPoint { t: number; price: number }
 
 type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y"
+type CryptoFilter = "all" | "gainers" | "losers"
 
 // Constants
 const CHART_RANGES: { value: ChartRange; label: string }[] = [
@@ -169,6 +170,7 @@ export const CryptoPage = () => {
   const [error, setError] = useState<string | null>(null)
   const [start, setStart] = useState(0)
   const [hasMore, setHasMore] = useState(true)
+  const [filter, setFilter] = useState<CryptoFilter>("all")
 
   const [query, setQuery] = useState("")
   const [isSearching, setIsSearching] = useState(false)
@@ -240,6 +242,16 @@ export const CryptoPage = () => {
     }
   }, [query, fetchList, searchQuotes])
 
+  const sortedCoins = useMemo(() => {
+    let arr = [...coins]
+    if (filter === "gainers") {
+      arr.sort((a, b) => (b.change_percent || 0) - (a.change_percent || 0))
+    } else if (filter === "losers") {
+      arr.sort((a, b) => (a.change_percent || 0) - (b.change_percent || 0))
+    }
+    return arr
+  }, [coins, filter])
+
   const handleLoadMore = () => { 
       const nextStart = start + PAGE_SIZE
       setStart(nextStart)
@@ -263,6 +275,20 @@ export const CryptoPage = () => {
           <Search size={15} className="market-search-icon" />
           <input className="input market-search" placeholder={language === "mk" ? "Барај по симбол..." : "Search by symbol..."} value={query} onChange={(e) => setQuery(e.target.value)} />
           {query && <button className="market-clear-btn" onClick={() => setQuery("")}><X size={13} /></button>}
+        </div>
+      </div>
+
+      <div className="market-row-filters">
+        <div className="market-chips">
+          <button className={`market-chip ${filter === "all" ? "market-chip--active" : ""}`} onClick={() => setFilter("all")}>
+            {language === "mk" ? "Сите" : "All"}
+          </button>
+          <button className={`market-chip ${filter === "gainers" ? "market-chip--active" : ""}`} onClick={() => setFilter("gainers")}>
+            {language === "mk" ? "Добивки" : "Top Gainers"}
+          </button>
+          <button className={`market-chip ${filter === "losers" ? "market-chip--active" : ""}`} onClick={() => setFilter("losers")}>
+            {language === "mk" ? "Загуби" : "Top Losers"}
+          </button>
         </div>
       </div>
 
@@ -290,7 +316,7 @@ export const CryptoPage = () => {
                   </tr>
                 </thead>
                 <tbody>
-                  {coins.map((coin, idx) => {
+                  {sortedCoins.map((coin, idx) => {
                     const isUp = (coin.change_percent ?? 0) >= 0
                     return (
                       <tr key={`${coin.symbol}-${idx}`} className="market-row" onClick={() => setSelectedCoin(coin)}>
