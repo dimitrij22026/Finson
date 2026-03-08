@@ -1,6 +1,6 @@
-import { useState, useMemo, useEffect } from "react"
+import { useState, useMemo, useEffect, useRef, useCallback } from "react"
 import type { FormEvent } from "react"
-import { Trash2, Pencil, X } from "lucide-react"
+import { Trash2, Pencil, X, ChevronDown } from "lucide-react"
 import { createPortal } from "react-dom"
 
 import { useCreateTransaction, useTransactions, useDeleteTransaction, useUpdateTransaction } from "./hooks"
@@ -122,7 +122,7 @@ export const TransactionsPage = () => {
       category: tx.category,
       amount: String(tx.amount),
       transaction_type: tx.transaction_type,
-      occurred_at: tx.occurred_at.slice(0, 16),
+      occurred_at: tx.occurred_at.slice(0, 10),
       note: tx.note || "",
     })
   }
@@ -140,7 +140,7 @@ export const TransactionsPage = () => {
         category: toTitleCase(editFormState.category.trim()),
         amount: editFormState.amount,
         transaction_type: editFormState.transaction_type,
-        occurred_at: new Date(editFormState.occurred_at).toISOString(),
+        occurred_at: new Date(editFormState.occurred_at + "T12:00:00").toISOString(),
         note: editFormState.note || undefined,
       })
       closeEditModal()
@@ -178,10 +178,37 @@ export const TransactionsPage = () => {
     category: "",
     amount: "",
     transaction_type: "expense",
-    occurred_at: new Date().toISOString().slice(0, 16),
+    occurred_at: new Date().toISOString().slice(0, 10),
     note: "",
   })
   const [error, setError] = useState<string | null>(null)
+
+  // Custom dropdown state for create form
+  const [showTypeDropdown, setShowTypeDropdown] = useState(false)
+  const typeDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Custom dropdown state for edit form
+  const [showEditTypeDropdown, setShowEditTypeDropdown] = useState(false)
+  const editTypeDropdownRef = useRef<HTMLDivElement>(null)
+
+  // Close dropdowns on outside click
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (typeDropdownRef.current && !typeDropdownRef.current.contains(e.target as Node)) {
+        setShowTypeDropdown(false)
+      }
+      if (editTypeDropdownRef.current && !editTypeDropdownRef.current.contains(e.target as Node)) {
+        setShowEditTypeDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const TYPE_COLORS: Record<string, string> = {
+    income: "#22c55e",
+    expense: "#ef4444",
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -192,7 +219,7 @@ export const TransactionsPage = () => {
         category: toTitleCase(formState.category.trim()),
         amount: formState.amount,
         currency: userCurrency,
-        occurred_at: new Date(formState.occurred_at).toISOString(),
+        occurred_at: new Date(formState.occurred_at + "T12:00:00").toISOString(),
       })
       setFormState((prev) => ({ ...prev, category: "", amount: "", note: "" }))
     } catch (err) {
@@ -220,17 +247,35 @@ export const TransactionsPage = () => {
           onChange={(e) => setFormState((prev) => ({ ...prev, amount: e.target.value }))}
           required
         />
-        <select
-          className="input"
-          value={formState.transaction_type}
-          onChange={(e) => setFormState((prev) => ({ ...prev, transaction_type: e.target.value as "income" | "expense" }))}
-        >
-          <option value="income">{t("income")}</option>
-          <option value="expense">{t("expense")}</option>
-        </select>
+        <div className="custom-dropdown" ref={typeDropdownRef}>
+          <button
+            type="button"
+            className="custom-dropdown__trigger"
+            onClick={() => setShowTypeDropdown((v) => !v)}
+          >
+            <span className="custom-dropdown__dot" style={{ background: TYPE_COLORS[formState.transaction_type] }} />
+            <span className="custom-dropdown__text">{t(formState.transaction_type)}</span>
+            <ChevronDown size={14} className={`custom-dropdown__chevron${showTypeDropdown ? " custom-dropdown__chevron--open" : ""}`} />
+          </button>
+          {showTypeDropdown && (
+            <div className="custom-dropdown__menu">
+              {(["income", "expense"] as const).map((tp) => (
+                <button
+                  key={tp}
+                  type="button"
+                  className={`custom-dropdown__item${formState.transaction_type === tp ? " custom-dropdown__item--active" : ""}`}
+                  onClick={() => { setFormState((prev) => ({ ...prev, transaction_type: tp })); setShowTypeDropdown(false) }}
+                >
+                  <span className="custom-dropdown__dot" style={{ background: TYPE_COLORS[tp] }} />
+                  <span>{t(tp)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <input
           className="input"
-          type="datetime-local"
+          type="date"
           value={formState.occurred_at}
           onChange={(e) => setFormState((prev) => ({ ...prev, occurred_at: e.target.value }))}
         />
@@ -432,20 +477,38 @@ export const TransactionsPage = () => {
                 </div>
                 <div className="input-group">
                   <label>{t("type")}</label>
-                  <select
-                    className="input"
-                    value={editFormState.transaction_type}
-                    onChange={(e) => setEditFormState((prev) => ({ ...prev, transaction_type: e.target.value as "income" | "expense" }))}
-                  >
-                    <option value="income">{t("income")}</option>
-                    <option value="expense">{t("expense")}</option>
-                  </select>
+                  <div className="custom-dropdown" ref={editTypeDropdownRef}>
+                    <button
+                      type="button"
+                      className="custom-dropdown__trigger"
+                      onClick={() => setShowEditTypeDropdown((v) => !v)}
+                    >
+                      <span className="custom-dropdown__dot" style={{ background: TYPE_COLORS[editFormState.transaction_type] }} />
+                      <span className="custom-dropdown__text">{t(editFormState.transaction_type)}</span>
+                      <ChevronDown size={14} className={`custom-dropdown__chevron${showEditTypeDropdown ? " custom-dropdown__chevron--open" : ""}`} />
+                    </button>
+                    {showEditTypeDropdown && (
+                      <div className="custom-dropdown__menu">
+                        {(["income", "expense"] as const).map((tp) => (
+                          <button
+                            key={tp}
+                            type="button"
+                            className={`custom-dropdown__item${editFormState.transaction_type === tp ? " custom-dropdown__item--active" : ""}`}
+                            onClick={() => { setEditFormState((prev) => ({ ...prev, transaction_type: tp })); setShowEditTypeDropdown(false) }}
+                          >
+                            <span className="custom-dropdown__dot" style={{ background: TYPE_COLORS[tp] }} />
+                            <span>{t(tp)}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
                 <div className="input-group">
                   <label>{t("date")}</label>
                   <input
                     className="input"
-                    type="datetime-local"
+                    type="date"
                     value={editFormState.occurred_at}
                     onChange={(e) => setEditFormState((prev) => ({ ...prev, occurred_at: e.target.value }))}
                   />

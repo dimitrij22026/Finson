@@ -47,7 +47,7 @@ def register_user(*, db: Session = Depends(deps.get_db), user_in: UserCreate) ->
         db.rollback()
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail=str(exc),
+            detail="Registration failed. Please try again.",
         ) from exc
 
 

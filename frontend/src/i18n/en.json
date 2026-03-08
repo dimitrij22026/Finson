@@ -249,5 +249,11 @@
   "enthusiasmLevel": "Enthusiasm (Level)",
   "techStack": "Tech Stack",
   "unsupportedCurrency": "Unsupported currency",
-  "currencyConversion": "Currency conversion"
+  "currencyConversion": "Currency conversion",
+  "welcomeCurrencyTitle": "Welcome! Let's set your currency",
+  "welcomeCurrencySubtitle": "Choose the currency you'd like to use across the app. Don't worry — you can always change it later in your profile settings.",
+  "welcomeCurrencyPopular": "Popular",
+  "welcomeCurrencyAll": "All Currencies",
+  "welcomeCurrencyConfirm": "Let's go!",
+  "welcomeCurrencySearch": "Search currencies..."
 }

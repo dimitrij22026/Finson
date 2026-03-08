@@ -12,6 +12,8 @@ if TYPE_CHECKING:  # pragma: no cover - typing helpers
     from app.models.budget import BudgetGoal
     from app.models.savings_goal import SavingsGoal
     from app.models.transaction import Transaction
+    from app.models.account import Account
+    from app.models.asset import Asset
 
 
 class User(Base):
@@ -46,5 +48,11 @@ class User(Base):
         back_populates="user", cascade="all, delete-orphan"
     )
     savings_goals: Mapped[list["SavingsGoal"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    accounts: Mapped[list["Account"]] = relationship(
+        back_populates="user", cascade="all, delete-orphan"
+    )
+    assets: Mapped[list["Asset"]] = relationship(
         back_populates="user", cascade="all, delete-orphan"
     )

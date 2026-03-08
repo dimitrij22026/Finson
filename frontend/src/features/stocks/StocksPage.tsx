@@ -295,8 +295,7 @@ export const StocksPage = () => {
           <h1 className="hero-title">{language === "mk" ? "\u0410\u043a\u0446\u0438\u0438" : "Stocks"}</h1>
         </div>
         <div className="dashboard__badge">
-          <span>{language === "mk" ? "\u041f\u043e\u0434\u0430\u0442\u043e\u0446\u0438 \u043e\u0434" : "Data from"}</span>
-          <strong>Yahoo Finance</strong>
+          <span>Yahoo Finance Data</span>
         </div>
       </div>
 

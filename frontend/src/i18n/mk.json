@@ -249,5 +249,11 @@
   "enthusiasmLevel": "Ентузијазам (Level)",
   "techStack": "Технологии",
   "unsupportedCurrency": "Неподдржана валута",
-  "currencyConversion": "Конверзија на валута"
+  "currencyConversion": "Конверзија на валута",
+  "welcomeCurrencyTitle": "Добредојдовте! Да ја поставиме вашата валута",
+  "welcomeCurrencySubtitle": "Изберете ја валутата која сакате да ја користите низ апликацијата. Не грижете се — можете да ја промените подоцна во поставките на профилот.",
+  "welcomeCurrencyPopular": "Популарни",
+  "welcomeCurrencyAll": "Сите валути",
+  "welcomeCurrencyConfirm": "Ајде!",
+  "welcomeCurrencySearch": "Пребарувај валути..."
 }

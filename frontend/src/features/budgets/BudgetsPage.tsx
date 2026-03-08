@@ -1,75 +1,19 @@
-import { useState, useEffect } from "react"
+import { useState, useRef, useEffect } from "react"
 import type { FormEvent } from "react"
-import { Trash2, Pencil, X } from "lucide-react"
-import { createPortal } from "react-dom"
+import { Trash2, ChevronDown } from "lucide-react"
 
-import { useBudgets, useCreateBudget, useDeleteBudget, useUpdateBudget } from "./hooks"
+import { useBudgets, useCreateBudget, useDeleteBudget } from "./hooks"
 import { useLanguage } from "../../i18n"
 import { useAuth } from "../../hooks/useAuth"
-import type { BudgetGoal } from "../../api/types"
 
 export const BudgetsPage = () => {
   const { data, isLoading, isError } = useBudgets()
   const createBudget = useCreateBudget()
   const deleteBudget = useDeleteBudget()
-  const updateBudget = useUpdateBudget()
   const { language, t } = useLanguage()
   const { user } = useAuth()
   const userCurrency = user?.currency || "EUR"
-
-  // Edit modal state
-  const [editingBudget, setEditingBudget] = useState<BudgetGoal | null>(null)
-  const [editFormState, setEditFormState] = useState({
-    category: "",
-    limit_amount: "",
-    period: "monthly" as "monthly" | "weekly" | "yearly",
-    starts_on: "",
-  })
-
-  // Prevent body scrolling when modal is open
-  useEffect(() => {
-    if (editingBudget) {
-      document.body.classList.add('modal-open')
-    } else {
-      document.body.classList.remove('modal-open')
-    }
-
-    return () => {
-      document.body.classList.remove('modal-open')
-    }
-  }, [editingBudget])
-
-  const openEditModal = (budget: BudgetGoal) => {
-    setEditingBudget(budget)
-    setEditFormState({
-      category: budget.category,
-      limit_amount: String(budget.limit_amount),
-      period: budget.period,
-      starts_on: budget.starts_on,
-    })
-  }
-
-  const closeEditModal = () => {
-    setEditingBudget(null)
-  }
-
-  const handleEditSubmit = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!editingBudget) return
-    try {
-      await updateBudget.mutateAsync({
-        id: editingBudget.id,
-        category: editFormState.category,
-        limit_amount: editFormState.limit_amount,
-        period: editFormState.period,
-        starts_on: editFormState.starts_on,
-      })
-      closeEditModal()
-    } catch (err) {
-      console.error("Failed to update budget:", err)
-    }
-  }
-
+  
   const handleDelete = (id: number) => {
     if (window.confirm(t("confirmDelete"))) {
       deleteBudget.mutate(id)
@@ -91,6 +35,26 @@ export const BudgetsPage = () => {
   })
 
   const [error, setError] = useState<string | null>(null)
+
+  // Custom dropdown state
+  const [showPeriodDropdown, setShowPeriodDropdown] = useState(false)
+  const periodDropdownRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (periodDropdownRef.current && !periodDropdownRef.current.contains(e.target as Node)) {
+        setShowPeriodDropdown(false)
+      }
+    }
+    document.addEventListener("mousedown", handler)
+    return () => document.removeEventListener("mousedown", handler)
+  }, [])
+
+  const PERIOD_COLORS: Record<string, string> = {
+    monthly: "#6366f1",
+    weekly: "#06b6d4",
+    yearly: "#f59e0b",
+  }
 
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault()
@@ -129,20 +93,32 @@ export const BudgetsPage = () => {
           required
         />
 
-        <select
-          className="input"
-          value={formState.period}
-          onChange={(e) =>
-            setFormState((prev) => ({
-              ...prev,
-              period: e.target.value as "monthly" | "weekly" | "yearly",
-            }))
-          }
-        >
-          <option value="monthly">{t("monthly")}</option>
-          <option value="weekly">{t("weekly")}</option>
-          <option value="yearly">{t("yearly")}</option>
-        </select>
+        <div className="custom-dropdown" ref={periodDropdownRef}>
+          <button
+            type="button"
+            className="custom-dropdown__trigger"
+            onClick={() => setShowPeriodDropdown((v) => !v)}
+          >
+            <span className="custom-dropdown__dot" style={{ background: PERIOD_COLORS[formState.period] }} />
+            <span className="custom-dropdown__text">{t(formState.period)}</span>
+            <ChevronDown size={14} className={`custom-dropdown__chevron${showPeriodDropdown ? " custom-dropdown__chevron--open" : ""}`} />
+          </button>
+          {showPeriodDropdown && (
+            <div className="custom-dropdown__menu">
+              {(["monthly", "weekly", "yearly"] as const).map((p) => (
+                <button
+                  key={p}
+                  type="button"
+                  className={`custom-dropdown__item${formState.period === p ? " custom-dropdown__item--active" : ""}`}
+                  onClick={() => { setFormState((prev) => ({ ...prev, period: p })); setShowPeriodDropdown(false) }}
+                >
+                  <span className="custom-dropdown__dot" style={{ background: PERIOD_COLORS[p] }} />
+                  <span>{t(p)}</span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
 
         <input
           className="input"
@@ -195,23 +171,14 @@ export const BudgetsPage = () => {
                     </td>
                     <td>{budget.starts_on}</td>
                     <td>
-                      <div className="action-buttons">
-                        <button
-                          className="edit-button"
-                          onClick={() => openEditModal(budget)}
-                          title={t("edit")}
-                        >
-                          <Pencil size={16} />
-                        </button>
-                        <button
-                          className="delete-button"
-                          onClick={() => handleDelete(budget.id)}
-                          disabled={deleteBudget.isPending}
-                          title={t("deleteBudget")}
-                        >
-                          <Trash2 size={16} />
-                        </button>
-                      </div>
+                      <button
+                        className="delete-button"
+                        onClick={() => handleDelete(budget.id)}
+                        disabled={deleteBudget.isPending}
+                        title={t("deleteBudget")}
+                      >
+                        <Trash2 size={16} />
+                      </button>
                     </td>
                   </tr>
                 ))}
@@ -246,77 +213,6 @@ export const BudgetsPage = () => {
           </ul>
         </div> */}
       </div>
-
-      {editingBudget &&
-        createPortal(
-          <div className="modal-overlay" onClick={closeEditModal}>
-            <div className="modal" onClick={(e) => e.stopPropagation()}>
-              <div className="modal__header">
-                <h3>{t("editBudget") || "Edit Budget"}</h3>
-                <button className="modal__close" onClick={closeEditModal}>
-                  <X size={20} />
-                </button>
-              </div>
-              <form className="modal__form" onSubmit={handleEditSubmit}>
-                <div className="input-group">
-                  <label>{t("category")}</label>
-                  <input
-                    className="input"
-                    value={editFormState.category}
-                    onChange={(e) => setEditFormState((prev) => ({ ...prev, category: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="input-group">
-                  <label>{t("limit")}</label>
-                  <input
-                    className="input"
-                    type="number"
-                    step="0.01"
-                    value={editFormState.limit_amount}
-                    onChange={(e) => setEditFormState((prev) => ({ ...prev, limit_amount: e.target.value }))}
-                    required
-                  />
-                </div>
-                <div className="input-group">
-                  <label>{t("period")}</label>
-                  <select
-                    className="input"
-                    value={editFormState.period}
-                    onChange={(e) =>
-                      setEditFormState((prev) => ({
-                        ...prev,
-                        period: e.target.value as "monthly" | "weekly" | "yearly",
-                      }))
-                    }
-                  >
-                    <option value="monthly">{t("monthly")}</option>
-                    <option value="weekly">{t("weekly")}</option>
-                    <option value="yearly">{t("yearly")}</option>
-                  </select>
-                </div>
-                <div className="input-group">
-                  <label>{t("startDate") || "Start Date"}</label>
-                  <input
-                    className="input"
-                    type="date"
-                    value={editFormState.starts_on}
-                    onChange={(e) => setEditFormState((prev) => ({ ...prev, starts_on: e.target.value }))}
-                  />
-                </div>
-                <div className="modal__actions">
-                  <button type="button" className="secondary-button" onClick={closeEditModal}>
-                    {t("cancel")}
-                  </button>
-                  <button type="submit" className="primary-button" disabled={updateBudget.isPending}>
-                    {updateBudget.isPending ? t("saving") : t("save")}
-                  </button>
-                </div>
-              </form>
-            </div>
-          </div>,
-          document.body
-        )}
     </section>
   )
 }

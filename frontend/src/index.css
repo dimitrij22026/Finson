@@ -3,6 +3,7 @@
 @import "./market.css";
 
 :root {
+  color-scheme: dark;
   font-family: "Space Grotesk", "DM Sans", sans-serif;
   font-synthesis: none;
   text-rendering: optimizeLegibility;
@@ -26,6 +27,7 @@
 }
 
 :root[data-theme="light"] {
+  color-scheme: light;
   color: #0f172a;
   background-color: #ffffff;
   --bg: #ffffff;

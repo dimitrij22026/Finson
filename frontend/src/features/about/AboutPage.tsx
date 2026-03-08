@@ -70,9 +70,9 @@ export const AboutPage = () => {
           <div style={{ display: "flex", flexDirection: "column", gap: "1rem" }}>
             <a href="mailto:hello@finson.app" style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--accent)", textDecoration: "none" }}>
               <Mail size={20} />
-              hello@finson.app
+              finsonfinances@gmail.com
             </a>
-            <a href="https://github.com/finson" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--accent)", textDecoration: "none" }}>
+            <a href="https://github.com/dimitrij22026/Finson" target="_blank" rel="noopener noreferrer" style={{ display: "flex", alignItems: "center", gap: "0.5rem", color: "var(--accent)", textDecoration: "none" }}>
               <Github size={20} />
               GitHub Repository
             </a>
@@ -203,7 +203,7 @@ export const AboutPage = () => {
               {language === "mk" ? "Проверете го изворниот код, придонесете со идеи и придружете се кон заедницата на GitHub!" : "Check out the source code, contribute ideas, and join the community on GitHub!"}
             </p>
             <a 
-              href="https://github.com/finson" 
+              href="https://github.com/dimitrij22026/Finson" 
               target="_blank" 
               rel="noopener noreferrer"
               style={{ 

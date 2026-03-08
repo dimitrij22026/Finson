@@ -16,13 +16,13 @@ export const LoginPage = () => {
     full_name: string
     email: string
     password: string
-    currency: string
+    confirmPassword: string
   }
   const [formState, setFormState] = useState<AuthFormState>({
     full_name: "",
     email: "",
     password: "",
-    currency: "EUR",
+    confirmPassword: "",
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -38,11 +38,15 @@ export const LoginPage = () => {
       if (mode === "login") {
         await login({ email: formState.email, password: formState.password })
       } else {
+        if (formState.password !== formState.confirmPassword) {
+          setError(t("passwordsDontMatch"))
+          setLoading(false)
+          return
+        }
         await register({
           email: formState.email,
           password: formState.password,
           full_name: formState.full_name,
-          currency: formState.currency,
         })
       }
       navigate(from, { replace: true })
@@ -83,15 +87,14 @@ export const LoginPage = () => {
           required
         />
         {mode === "register" && (
-          <select
+          <input
             className="input"
-            value={formState.currency}
-            onChange={(e) => setFormState((prev) => ({ ...prev, currency: e.target.value }))}
-          >
-            <option value="EUR">EUR</option>
-            <option value="USD">USD</option>
-            <option value="MKD">MKD</option>
-          </select>
+            type="password"
+            placeholder={t("confirmPassword")}
+            value={formState.confirmPassword}
+            onChange={(e) => setFormState((prev) => ({ ...prev, confirmPassword: e.target.value }))}
+            required
+          />
         )}
         {error && <p className="auth-error">{error}</p>}
         <button className="primary-button" disabled={loading}>

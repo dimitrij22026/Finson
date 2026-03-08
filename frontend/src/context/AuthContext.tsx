@@ -71,6 +71,7 @@ export const AuthProvider = ({ children }: PropsWithChildren) => {
   const register = useCallback(
     async (payload: RegistrationPayload) => {
       await apiClient.post<UserProfile>("/auth/register", payload)
+      localStorage.setItem("finance-app.needs-currency-setup", "1")
       await login({ email: payload.email, password: payload.password })
     },
     [login],

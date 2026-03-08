@@ -40,3 +40,7 @@ backend/app/uploads/
 temp/
 
 test.json
+
+*.db
+*.db-shm
+*.db-wal
