@@ -89,7 +89,7 @@ const InvestmentCalculator = () => {
     }
 
     return projections
-  }, [investment, language])
+  }, [investment, language, t])
 
   const finalBalance = calculateInvestment[calculateInvestment.length - 1]?.balance || 0
   const totalContributions = calculateInvestment[calculateInvestment.length - 1]?.contributions || 0
@@ -121,7 +121,7 @@ const InvestmentCalculator = () => {
         >
           {investmentTypes.map((type) => (
             <option key={type.id} value={type.id}>
-              {type.name} {type.id !== "custom" ? `(~${type.avgReturn}% ${language === "mk" ? "годишно" : "annually"})` : ""}
+              {type.name} {type.id !== "custom" ? `(${type.avgReturn}% ${t("annually")})` : ""}
             </option>
           ))}
         </select>
@@ -131,33 +131,13 @@ const InvestmentCalculator = () => {
       <div className="investment-info">
         <span className="investment-info__icon"></span>
         <p>
-          {selectedType === "stocks" && (language === "mk" 
-            ? "Акциите нудат повисок принос но со поголем ризик. S&P 500 историски дава ~10% годишно."
-            : "Stocks offer higher returns but with more risk. S&P 500 historically returns ~10% annually.")}
-          {selectedType === "bonds" && (language === "mk"
-            ? "Обврзниците се побезбедни но со понизок принос. Идеални за стабилност и диверзификација."
-            : "Bonds are safer but with lower returns. Ideal for stability and diversification.")}
-          {selectedType === "etf" && (language === "mk"
-            ? "ETF фондовите нудат диверзификација со ниски провизии. Препорачано за почетници."
-            : "ETF funds offer diversification with low fees. Recommended for beginners.")}
-          {selectedType === "crypto" && (language === "mk"
-            ? "⚠️ Криптовалутите се високо волатилни. Инвестирај само што можеш да изгубиш."
-            : "⚠️ Cryptocurrency is highly volatile. Only invest what you can afford to lose.")}
-          {selectedType === "savings" && (language === "mk"
-            ? "Штедните сметки се најбезбедни но со низок принос (~2%). Добри за итен фонд."
-            : "Savings accounts are safest but with low returns (~2%). Good for emergency fund.")}
-          {selectedType === "realestate" && (language === "mk"
-            ? "REITs овозможуваат инвестирање во недвижности без купување имот. Стабилен приход."
-            : "REITs allow real estate investing without buying property. Stable income.")}
-          {selectedType === "custom" && (language === "mk"
-            ? "Внеси сопствена очекувана стапка на принос за твојата инвестиција."
-            : "Enter your own expected return rate for your investment.")}
+          {t(`${selectedType}Info` as TranslationKey)}
         </p>
       </div>
 
       <div className="investment-form">
         <div className="input-group">
-          <label>{language === "mk" ? "Почетен износ" : "Initial Amount"}</label>
+          <label>{t("initialAmount")}</label>
           <input
             type="number"
             className="input"
@@ -166,7 +146,7 @@ const InvestmentCalculator = () => {
           />
         </div>
         <div className="input-group">
-          <label>{language === "mk" ? "Месечна уплата" : "Monthly Contribution"}</label>
+          <label>{t("monthlyContribution")}</label>
           <input
             type="number"
             className="input"
@@ -175,7 +155,7 @@ const InvestmentCalculator = () => {
           />
         </div>
         <div className="input-group">
-          <label>{language === "mk" ? "Годишен принос (%)" : "Annual Return (%)"}</label>
+          <label>{t("annualReturn")}</label>
           <input
             type="number"
             className="input"
@@ -184,7 +164,7 @@ const InvestmentCalculator = () => {
           />
         </div>
         <div className="input-group">
-          <label>{language === "mk" ? "Период (години)" : "Period (years)"}</label>
+          <label>{t("periodYears")}</label>
           <input
             type="number"
             className="input"
@@ -196,15 +176,15 @@ const InvestmentCalculator = () => {
 
       <div className="investment-results">
         <div className="result-card">
-          <span>{language === "mk" ? "Краен баланс" : "Final Balance"}</span>
+          <span>{t("finalBalance")}</span>
           <strong className="result-value result-value--primary">{formatCurrency(finalBalance)}</strong>
         </div>
         <div className="result-card">
-          <span>{language === "mk" ? "Вкупни уплати" : "Total Contributions"}</span>
+          <span>{t("totalContributions")}</span>
           <strong className="result-value">{formatCurrency(totalContributions)}</strong>
         </div>
         <div className="result-card">
-          <span>{language === "mk" ? "Заработено" : "Earnings"}</span>
+          <span>{t("earnings")}</span>
           <strong className="result-value result-value--success">{formatCurrency(totalEarnings)}</strong>
         </div>
       </div>
@@ -302,7 +282,7 @@ const SavingsGoals = () => {
 
 export const AnalyticsPage = () => {
   const { data: transactions, isLoading } = useTransactions()
-  const { language } = useLanguage()
+  const { language, t } = useLanguage()
   const { user } = useAuth()
   const userCurrency = user?.currency || "EUR"
   const [savingsPeriod, setSavingsPeriod] = useState<"day" | "month" | "year" | "all">("day")
