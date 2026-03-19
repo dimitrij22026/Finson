@@ -1,12 +1,96 @@
-from fastapi import APIRouter, HTTPException, Query, Path
+from datetime import datetime, timedelta, timezone
+from typing import Any
+
 import httpx
+from fastapi import APIRouter, Path, Query
+
+from app.core.config import settings
+from app.schemas import MarketChartPoint, MarketListResponse, MarketQuote, MarketSearchItem
 
 router = APIRouter(prefix="/market")
 
 USER_AGENT = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/100.0.0.0 Safari/537.36"
+_CACHE: dict[str, tuple[datetime, Any]] = {}
 
 
-@router.get("/crypto/list")
+def _cache_get(cache_key: str) -> Any | None:
+    entry = _CACHE.get(cache_key)
+    if not entry:
+        return None
+    expires_at, value = entry
+    if expires_at < datetime.now(timezone.utc):
+        return None
+    return value
+
+
+def _cache_set(cache_key: str, value: Any) -> None:
+    ttl = timedelta(seconds=settings.MARKET_CACHE_TTL_SECONDS)
+    _CACHE[cache_key] = (datetime.now(timezone.utc) + ttl, value)
+
+
+def _extract_raw_number(value: Any) -> float | None:
+    if isinstance(value, dict):
+        value = value.get("raw")
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+async def _fetch_json_with_cache(
+    cache_key: str,
+    *,
+    url: str,
+    params: dict[str, Any],
+    fallback: dict[str, Any],
+) -> dict[str, Any]:
+    cached = _cache_get(cache_key)
+    if isinstance(cached, dict):
+        return cached
+
+    timeout = httpx.Timeout(settings.MARKET_HTTP_TIMEOUT_SECONDS)
+    try:
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
+            resp.raise_for_status()
+            payload = resp.json()
+            _cache_set(cache_key, payload)
+            return payload
+    except (httpx.HTTPError, ValueError):
+        return fallback
+
+
+def _parse_quotes(quotes: list[dict[str, Any]]) -> list[MarketQuote]:
+    parsed: list[MarketQuote] = []
+    for quote in quotes:
+        parsed.append(
+            MarketQuote(
+                symbol=str(quote.get("symbol") or ""),
+                name=str(quote.get("shortName")
+                         or quote.get("longName") or ""),
+                price=_extract_raw_number(quote.get("regularMarketPrice")),
+                change=_extract_raw_number(quote.get("regularMarketChange")),
+                change_percent=_extract_raw_number(
+                    quote.get("regularMarketChangePercent")),
+                market_cap=_extract_raw_number(quote.get("marketCap")),
+                volume=_extract_raw_number(quote.get("regularMarketVolume")),
+                day_high=_extract_raw_number(
+                    quote.get("regularMarketDayHigh")),
+                day_low=_extract_raw_number(quote.get("regularMarketDayLow")),
+                fifty_two_week_high=_extract_raw_number(
+                    quote.get("fiftyTwoWeekHigh")),
+                fifty_two_week_low=_extract_raw_number(
+                    quote.get("fiftyTwoWeekLow")),
+                exchange=str(quote.get("exchange") or ""),
+                image=str(quote.get("coinImageUrl") or ""),
+            )
+        )
+    return parsed
+
+
+@router.get("/crypto/list", response_model=MarketListResponse)
 async def get_crypto_list(count: int = 50, start: int = 0):
     url = "https://query1.finance.yahoo.com/v1/finance/screener/predefined/saved"
     params = {
@@ -17,40 +101,15 @@ async def get_crypto_list(count: int = 50, start: int = 0):
         "start": start,
         "count": count
     }
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        try:
-            result = data["finance"]["result"][0]
-            total = result.get("total", 0)
-            quotes = result.get("quotes", [])
-
-            parsed_quotes = []
-            for q in quotes:
-                parsed_quotes.append({
-                    "symbol": q.get("symbol"),
-                    "name": q.get("shortName", q.get("longName", "")),
-                    "price": q.get("regularMarketPrice", {}).get("raw") if isinstance(q.get("regularMarketPrice"), dict) else q.get("regularMarketPrice"),
-                    "change": q.get("regularMarketChange", {}).get("raw") if isinstance(q.get("regularMarketChange"), dict) else q.get("regularMarketChange"),
-                    "change_percent": q.get("regularMarketChangePercent", {}).get("raw") if isinstance(q.get("regularMarketChangePercent"), dict) else q.get("regularMarketChangePercent"),
-                    "market_cap": q.get("marketCap", {}).get("raw") if isinstance(q.get("marketCap"), dict) else q.get("marketCap"),
-                    "volume": q.get("regularMarketVolume", {}).get("raw") if isinstance(q.get("regularMarketVolume"), dict) else q.get("regularMarketVolume"),
-                    "exchange": q.get("exchange", ""),
-                    "image": q.get("coinImageUrl", "")
-                })
-
-            return {
-                "total": total,
-                "quotes": parsed_quotes
-            }
-        except Exception as e:
-            return {"total": 0, "quotes": []}
+    cache_key = f"crypto:list:{count}:{start}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"finance": {"result": []}})
+    result = (data.get("finance", {}).get("result") or [{}])[0]
+    quotes = result.get("quotes") or []
+    total = int(result.get("total") or 0)
+    return MarketListResponse(total=total, quotes=_parse_quotes(quotes))
 
 
-@router.get("/crypto/chart/{symbol}")
+@router.get("/crypto/chart/{symbol}", response_model=list[MarketChartPoint])
 async def get_crypto_chart_yahoo(
     symbol: str = Path(...),
     range: str = "1mo"
@@ -61,31 +120,16 @@ async def get_crypto_chart_yahoo(
     interval = valid_ranges.get(range, "1d")
 
     params = {"range": range, "interval": interval}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        try:
-            result = data["chart"]["result"][0]
-            timestamps = result.get("timestamp", [])
-            quotes = result["indicators"]["quote"][0]
-            closes = quotes.get("close", [])
-
-            points = []
-            for t, c in zip(timestamps, closes):
-                if c is not None:
-                    points.append({"t": t * 1000, "price": c})
-            return points
-        except Exception as e:
-            print("ERROR IN CHART:", e)
-            import traceback
-            traceback.print_exc()
-            return []
+    cache_key = f"crypto:chart:{symbol}:{range}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"chart": {"result": []}})
+    result = (data.get("chart", {}).get("result") or [{}])[0]
+    timestamps = result.get("timestamp") or []
+    closes = (result.get("indicators", {}).get(
+        "quote") or [{}])[0].get("close") or []
+    return [MarketChartPoint(t=int(ts) * 1000, price=float(close)) for ts, close in zip(timestamps, closes) if close is not None]
 
 
-@router.get("/stocks/list")
+@router.get("/stocks/list", response_model=MarketListResponse)
 async def get_stocks_list(
     screener: str = "day_gainers",
     count: int = 30,
@@ -108,150 +152,71 @@ async def get_stocks_list(
         "start": start,
         "count": count
     }
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        try:
-            result = data["finance"]["result"][0]
-            total = result.get("total", 0)
-            quotes = result.get("quotes", [])
-
-            parsed_quotes = []
-            for q in quotes:
-                parsed_quotes.append({
-                    "symbol": q.get("symbol"),
-                    "name": q.get("shortName", q.get("longName", "")),
-                    "price": q.get("regularMarketPrice", {}).get("raw") if isinstance(q.get("regularMarketPrice"), dict) else q.get("regularMarketPrice"),
-                    "change": q.get("regularMarketChange", {}).get("raw") if isinstance(q.get("regularMarketChange"), dict) else q.get("regularMarketChange"),
-                    "change_percent": q.get("regularMarketChangePercent", {}).get("raw") if isinstance(q.get("regularMarketChangePercent"), dict) else q.get("regularMarketChangePercent"),
-                    "market_cap": q.get("marketCap", {}).get("raw") if isinstance(q.get("marketCap"), dict) else q.get("marketCap"),
-                    "volume": q.get("regularMarketVolume", {}).get("raw") if isinstance(q.get("regularMarketVolume"), dict) else q.get("regularMarketVolume"),
-                    "day_high": q.get("regularMarketDayHigh", {}).get("raw") if isinstance(q.get("regularMarketDayHigh"), dict) else q.get("regularMarketDayHigh"),
-                    "day_low": q.get("regularMarketDayLow", {}).get("raw") if isinstance(q.get("regularMarketDayLow"), dict) else q.get("regularMarketDayLow"),
-                    "fifty_two_week_high": q.get("fiftyTwoWeekHigh", {}).get("raw") if isinstance(q.get("fiftyTwoWeekHigh"), dict) else q.get("fiftyTwoWeekHigh"),
-                    "fifty_two_week_low": q.get("fiftyTwoWeekLow", {}).get("raw") if isinstance(q.get("fiftyTwoWeekLow"), dict) else q.get("fiftyTwoWeekLow"),
-                    "exchange": q.get("exchange", "")
-                })
-
-            return {
-                "total": total,
-                "quotes": parsed_quotes
-            }
-        except Exception as e:
-            return {"total": 0, "quotes": []}
+    cache_key = f"stocks:list:{actual_screener}:{count}:{start}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"finance": {"result": []}})
+    result = (data.get("finance", {}).get("result") or [{}])[0]
+    quotes = result.get("quotes") or []
+    total = int(result.get("total") or 0)
+    return MarketListResponse(total=total, quotes=_parse_quotes(quotes))
 
 
-@router.get("/crypto/search")
+@router.get("/crypto/search", response_model=list[MarketSearchItem])
 async def get_crypto_search(q: str):
     url = f"https://query2.finance.yahoo.com/v1/finance/search"
     params = {"q": q, "quotesCount": 10, "newsCount": 0}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        quotes = data.get("quotes", [])
-        return [
-            {
-                "symbol": q.get("symbol"),
-                "name": q.get("shortname", q.get("longname", "")),
-                "exchange": q.get("exchDisp", q.get("exchange", "")),
-                "quoteType": q.get("quoteType", "")
-            }
-            for q in quotes if q.get("quoteType") in ["CRYPTOCURRENCY"]
-        ]
+    cache_key = f"crypto:search:{q.strip().lower()}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"quotes": []})
+    quotes = data.get("quotes") or []
+    return [
+        MarketSearchItem(
+            symbol=str(item.get("symbol") or ""),
+            name=str(item.get("shortname") or item.get("longname") or ""),
+            exchange=str(item.get("exchDisp") or item.get("exchange") or ""),
+            quoteType=str(item.get("quoteType") or ""),
+        )
+        for item in quotes
+        if item.get("quoteType") in {"CRYPTOCURRENCY"}
+    ]
 
 
-@router.get("/stocks/search")
+@router.get("/stocks/search", response_model=list[MarketSearchItem])
 async def get_stocks_search(q: str):
     url = f"https://query2.finance.yahoo.com/v1/finance/search"
     params = {"q": q, "quotesCount": 10, "newsCount": 0}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        quotes = data.get("quotes", [])
-        return [
-            {
-                "symbol": q.get("symbol"),
-                "name": q.get("shortname", q.get("longname", "")),
-                "exchange": q.get("exchDisp", q.get("exchange", "")),
-                "quoteType": q.get("quoteType", "")
-            }
-            for q in quotes if q.get("quoteType") in ["EQUITY", "ETF"]
-        ]
+    cache_key = f"stocks:search:{q.strip().lower()}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"quotes": []})
+    quotes = data.get("quotes") or []
+    return [
+        MarketSearchItem(
+            symbol=str(item.get("symbol") or ""),
+            name=str(item.get("shortname") or item.get("longname") or ""),
+            exchange=str(item.get("exchDisp") or item.get("exchange") or ""),
+            quoteType=str(item.get("quoteType") or ""),
+        )
+        for item in quotes
+        if item.get("quoteType") in {"EQUITY", "ETF"}
+    ]
 
 
-@router.get("/crypto/quote")
+@router.get("/crypto/quote", response_model=list[MarketQuote])
 async def get_crypto_quote(symbols: str):
     url = "https://query1.finance.yahoo.com/v7/finance/quote"
     params = {"symbols": symbols}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        quotes = data.get("quoteResponse", {}).get("result", [])
-
-        parsed_quotes = []
-        for q in quotes:
-            parsed_quotes.append({
-                "symbol": q.get("symbol"),
-                "name": q.get("shortName", q.get("longName", "")),
-                "price": q.get("regularMarketPrice"),
-                "change": q.get("regularMarketChange"),
-                "change_percent": q.get("regularMarketChangePercent"),
-                "market_cap": q.get("marketCap"),
-                "volume": q.get("regularMarketVolume"),
-                "day_high": q.get("regularMarketDayHigh"),
-                "day_low": q.get("regularMarketDayLow"),
-                "fifty_two_week_high": q.get("fiftyTwoWeekHigh"),
-                "fifty_two_week_low": q.get("fiftyTwoWeekLow"),
-                "exchange": q.get("exchange", ""),
-                "image": q.get("coinImageUrl", "")
-            })
-        return parsed_quotes
+    cache_key = f"crypto:quote:{symbols}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"quoteResponse": {"result": []}})
+    return _parse_quotes(data.get("quoteResponse", {}).get("result") or [])
 
 
-@router.get("/stocks/quote")
+@router.get("/stocks/quote", response_model=list[MarketQuote])
 async def get_stocks_quote(symbols: str):
     url = "https://query1.finance.yahoo.com/v7/finance/quote"
     params = {"symbols": symbols}
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        quotes = data.get("quoteResponse", {}).get("result", [])
-
-        parsed_quotes = []
-        for q in quotes:
-            parsed_quotes.append({
-                "symbol": q.get("symbol"),
-                "name": q.get("shortName", q.get("longName", "")),
-                "price": q.get("regularMarketPrice"),
-                "change": q.get("regularMarketChange"),
-                "change_percent": q.get("regularMarketChangePercent"),
-                "market_cap": q.get("marketCap"),
-                "volume": q.get("regularMarketVolume"),
-                "day_high": q.get("regularMarketDayHigh"),
-                "day_low": q.get("regularMarketDayLow"),
-                "fifty_two_week_high": q.get("fiftyTwoWeekHigh"),
-                "fifty_two_week_low": q.get("fiftyTwoWeekLow"),
-                "exchange": q.get("exchange", "")
-            })
-        return parsed_quotes
+    cache_key = f"stocks:quote:{symbols}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"quoteResponse": {"result": []}})
+    return _parse_quotes(data.get("quoteResponse", {}).get("result") or [])
 
 
-@router.get("/stocks/chart/{symbol}")
+@router.get("/stocks/chart/{symbol}", response_model=list[MarketChartPoint])
 async def get_stocks_chart(
     symbol: str = Path(...),
     range: str = "1mo"
@@ -271,25 +236,14 @@ async def get_stocks_chart(
     url = f"https://query1.finance.yahoo.com/v8/finance/chart/{symbol}"
     params = {"interval": interval, "range": range}
 
-    async with httpx.AsyncClient() as client:
-        resp = await client.get(url, params=params, headers={"User-Agent": USER_AGENT})
-        if resp.status_code != 200:
-            raise HTTPException(status_code=resp.status_code, detail=resp.text)
-
-        data = resp.json()
-        try:
-            result = data["chart"]["result"][0]
-            timestamps = result.get("timestamp", [])
-            close_prices = result.get("indicators", {}).get(
-                "quote", [{}])[0].get("close", [])
-
-            chart_data = []
-            for t, p in zip(timestamps, close_prices):
-                if p is not None:
-                    chart_data.append({
-                        "t": t * 1000,  # JS timestamp
-                        "price": p
-                    })
-            return chart_data
-        except Exception:
-            return []
+    cache_key = f"stocks:chart:{symbol}:{range}"
+    data = await _fetch_json_with_cache(cache_key, url=url, params=params, fallback={"chart": {"result": []}})
+    result = (data.get("chart", {}).get("result") or [{}])[0]
+    timestamps = result.get("timestamp") or []
+    close_prices = (result.get("indicators", {}).get(
+        "quote") or [{}])[0].get("close") or []
+    return [
+        MarketChartPoint(t=int(timestamp) * 1000, price=float(price))
+        for timestamp, price in zip(timestamps, close_prices)
+        if price is not None
+    ]
