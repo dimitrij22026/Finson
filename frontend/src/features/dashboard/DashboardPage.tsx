@@ -1,7 +1,10 @@
+import { useEffect, useState } from "react"
 import { useMonthlyInsight } from "./hooks"
 import { useLanguage } from "../../i18n"
 import { useAuth } from "../../hooks/useAuth"
 import { UserStatusBanner } from "../../components/auth/UserStatusBanner"
+import { NewsCard } from "../../components/ui/NewsCard"
+import { fetchFinancialNews, type NewsItem } from "../../services/newsService"
 
 interface MonthlyData {
   balance: number | string
@@ -37,6 +40,9 @@ export const DashboardPage = () => {
   const { data, isLoading, isError } = useMonthlyInsight()
   const { language, t } = useLanguage()
   const { user } = useAuth()
+  const [news, setNews] = useState<NewsItem[]>([])
+  const [isNewsLoading, setIsNewsLoading] = useState(true)
+  const [isNewsError, setIsNewsError] = useState(false)
 
   const userCurrency = user?.currency || "EUR"
 
@@ -44,6 +50,37 @@ export const DashboardPage = () => {
     language === "mk" ? "mk-MK" : "en-US",
     { style: "currency", currency: userCurrency }
   )
+
+  useEffect(() => {
+    let isMounted = true
+
+    const loadNews = async () => {
+      setIsNewsLoading(true)
+      setIsNewsError(false)
+
+      try {
+        const latestNews = await fetchFinancialNews(5)
+        if (isMounted) {
+          setNews(latestNews)
+        }
+      } catch {
+        if (isMounted) {
+          setIsNewsError(true)
+          setNews([])
+        }
+      } finally {
+        if (isMounted) {
+          setIsNewsLoading(false)
+        }
+      }
+    }
+
+    void loadNews()
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   if (isLoading) {
     return (
@@ -180,6 +217,25 @@ export const DashboardPage = () => {
             </ul>
           )}
         </div>
+
+        <aside className="panel news-panel">
+          <p className="panel__title">Latest Market Updates</p>
+          <p className="panel__subtitle">Top headlines from the financial market</p>
+
+          <div className="news-list" aria-live="polite">
+            {isNewsLoading && <p className="news-list__state">Loading updates...</p>}
+
+            {!isNewsLoading && isNewsError && (
+              <p className="news-list__state">Unable to load market updates right now.</p>
+            )}
+
+            {!isNewsLoading && !isNewsError && news.length === 0 && (
+              <p className="news-list__state">No updates available.</p>
+            )}
+
+            {!isNewsLoading && !isNewsError && news.map((item) => <NewsCard key={item.url} item={item} />)}
+          </div>
+        </aside>
       </div>
     </section>
   )
