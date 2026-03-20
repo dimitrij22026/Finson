@@ -5,11 +5,12 @@ from app.schemas.insight import CategoryBreakdown, MonthlyInsight
 from app.schemas.market import MarketChartPoint, MarketListResponse, MarketQuote, MarketSearchItem
 from app.schemas.savings_goal import SavingsGoalCreate, SavingsGoalRead, SavingsGoalUpdate
 from app.schemas.transaction import TransactionCreate, TransactionRead, TransactionUpdate
-from app.schemas.user import PasswordChange, UserCreate, UserRead, UserUpdate
+from app.schemas.user import AdminUserUpdate, PasswordChange, SubscriptionTier, UserCreate, UserRead, UserRole, UserUpdate
 
 __all__ = [
     "AdviceRead",
     "AdviceRequest",
+    "AdminUserUpdate",
     "ConversationSummary",
     "BudgetCreate",
     "BudgetRead",
@@ -32,5 +33,7 @@ __all__ = [
     "TransactionUpdate",
     "UserCreate",
     "UserRead",
+    "UserRole",
+    "SubscriptionTier",
     "UserUpdate",
 ]

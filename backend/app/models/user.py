@@ -34,6 +34,11 @@ class User(Base):
         DateTime(timezone=True), nullable=True)
     profile_picture: Mapped[str | None] = mapped_column(
         String(500), nullable=True)
+    role: Mapped[str] = mapped_column(
+        String(16), default="USER", nullable=False)
+    subscription_tier: Mapped[str] = mapped_column(
+        String(16), default="FREE", nullable=False
+    )
     currency: Mapped[str] = mapped_column(
         String(3), default="EUR", nullable=False)
     monthly_income: Mapped[Decimal] = mapped_column(

@@ -6,7 +6,7 @@ from sqlalchemy.orm import Session
 from app.core.config import settings
 from app.core.security import get_password_hash, verify_password
 from app.models import User
-from app.schemas.user import UserCreate, UserUpdate
+from app.schemas.user import AdminUserUpdate, UserCreate, UserUpdate
 
 
 def get(db: Session, user_id: int) -> User | None:
@@ -16,6 +16,11 @@ def get(db: Session, user_id: int) -> User | None:
 def get_by_email(db: Session, email: str) -> User | None:
     statement = select(User).where(User.email == email)
     return db.scalars(statement).first()
+
+
+def list_users(db: Session) -> list[User]:
+    statement = select(User).order_by(User.created_at.desc())
+    return list(db.scalars(statement).all())
 
 
 def create(db: Session, user_in: UserCreate) -> User:
@@ -93,3 +98,13 @@ def change_password(db: Session, user: User, current_password: str, new_password
     db.commit()
     db.refresh(user)
     return True
+
+
+def update_admin_fields(db: Session, user: User, user_in: AdminUserUpdate) -> User:
+    update_data = user_in.model_dump(exclude_unset=True)
+    for field, value in update_data.items():
+        setattr(user, field, value)
+    db.add(user)
+    db.commit()
+    db.refresh(user)
+    return user
