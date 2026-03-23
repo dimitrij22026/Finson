@@ -197,6 +197,45 @@ input.market-search {
   border-color: var(--accent);
 }
 
+.market-favorite-col {
+  width: 48px;
+  text-align: center !important;
+}
+
+.market-favorite-cell {
+  width: 48px;
+  padding-left: 0.75rem !important;
+  padding-right: 0.25rem !important;
+}
+
+.market-star-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  transition: color 0.2s ease, background 0.2s ease, border-color 0.2s ease;
+}
+
+.market-star-btn:hover {
+  color: #f59e0b;
+  background: var(--surface);
+  border-color: var(--border);
+}
+
+.market-star-btn--active {
+  color: #f59e0b;
+}
+
+.market-star-btn--modal {
+  margin-left: 0.25rem;
+}
+
 .market-table-wrap {
   overflow-x: auto;
 }
@@ -296,6 +335,12 @@ input.market-search {
   display: flex;
   align-items: center;
   gap: 1rem;
+}
+
+.coin-chart-modal__title-main {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
 }
 
 .coin-chart-modal__title h2 {

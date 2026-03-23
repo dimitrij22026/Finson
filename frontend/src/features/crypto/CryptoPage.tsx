@@ -9,10 +9,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Search, TrendingDown, TrendingUp, X } from "lucide-react"
+import { Search, Star, TrendingDown, TrendingUp, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { useAuth } from "../../hooks/useAuth"
+import { useWatchlist } from "../../hooks/useWatchlist"
 import { apiClient } from "../../api/client"
 
 // Types
@@ -43,7 +44,7 @@ interface CryptoSearchResult {
 interface ChartPoint { t: number; price: number }
 
 type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y"
-type CryptoFilter = "all" | "gainers" | "losers"
+type CryptoFilter = "all" | "gainers" | "losers" | "watchlist"
 
 // Constants
 const CHART_RANGES: { value: ChartRange; label: string }[] = [
@@ -75,7 +76,17 @@ function fmtMillions(n: number | null): string {
 }
 
 // Chart Modal
-const CryptoChartModal = ({ coin, onClose }: { coin: CryptoRow; onClose: () => void }) => {
+const CryptoChartModal = ({
+  coin,
+  onClose,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  coin: CryptoRow
+  onClose: () => void
+  isFavorite: (symbol: string) => boolean
+  onToggleFavorite: (symbol: string) => void
+}) => {
   const { t } = useTranslation()
   const [chartRange, setChartRange] = useState<ChartRange>("1mo")
   const [chartData, setChartData] = useState<ChartPoint[]>([])
@@ -93,6 +104,7 @@ const CryptoChartModal = ({ coin, onClose }: { coin: CryptoRow; onClose: () => v
   }, [coin.symbol, chartRange, token])
 
   const isUp = (coin.change_percent ?? 0) >= 0
+  const favorite = isFavorite(coin.symbol)
   const color = isUp ? "#22c55e" : "#fb7185"
   const formatDate = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })
 
@@ -108,7 +120,21 @@ const CryptoChartModal = ({ coin, onClose }: { coin: CryptoRow; onClose: () => v
           <div className="coin-chart-modal__title">
             {coin.image ? <img src={coin.image} alt={coin.name} width={28} height={28} className="coin-icon" /> : null}
             <div>
-              <h2>{coin.name}</h2>
+              <div className="coin-chart-modal__title-main">
+                <h2>{coin.name}</h2>
+                <button
+                  type="button"
+                  className={`market-star-btn market-star-btn--modal ${favorite ? "market-star-btn--active" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleFavorite(coin.symbol)
+                  }}
+                  aria-label={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                  title={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                >
+                  <Star size={18} fill={favorite ? "currentColor" : "none"} />
+                </button>
+              </div>
               <span className="eyebrow">{coin.symbol}</span>
             </div>
           </div>
@@ -179,11 +205,13 @@ export const CryptoPage = () => {
   const [start, setStart] = useState(0)
   const [hasMore, setHasMore] = useState(true)
   const [filter, setFilter] = useState<CryptoFilter>("all")
+  const [watchlistCoins, setWatchlistCoins] = useState<CryptoRow[]>([])
 
   const [query, setQuery] = useState("")
   const [searchResults, setSearchResults] = useState<CryptoSearchResult[] | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedCoin, setSelectedCoin] = useState<CryptoRow | null>(null)
+  const { favoriteSymbols, isFavorite, toggleFavorite } = useWatchlist("crypto")
 
   const abortRef = useRef<AbortController | null>(null)
 
@@ -283,15 +311,37 @@ export const CryptoPage = () => {
     [coins, handleCoinSelect, token],
   )
 
+  const fetchWatchlistCoins = useCallback(
+    async (symbols: string[]) => {
+      if (symbols.length === 0) {
+        setWatchlistCoins([])
+        return
+      }
+
+      try {
+        const data = await apiClient.get<CryptoRow[]>(`/market/crypto/quote?symbols=${encodeURIComponent(symbols.join(","))}`, { token })
+        setWatchlistCoins(data)
+      } catch {
+        setWatchlistCoins([])
+      }
+    },
+    [token],
+  )
+
+  useEffect(() => {
+    if (filter !== "watchlist") return
+    void fetchWatchlistCoins(favoriteSymbols)
+  }, [favoriteSymbols, fetchWatchlistCoins, filter])
+
   const sortedCoins = useMemo(() => {
-    let arr = [...coins]
+    let arr = filter === "watchlist" ? [...watchlistCoins] : [...coins]
     if (filter === "gainers") {
       arr.sort((a, b) => (b.change_percent || 0) - (a.change_percent || 0))
     } else if (filter === "losers") {
       arr.sort((a, b) => (a.change_percent || 0) - (b.change_percent || 0))
     }
     return arr
-  }, [coins, filter])
+  }, [coins, filter, watchlistCoins])
 
   const handleLoadMore = () => { 
       const nextStart = start + PAGE_SIZE
@@ -348,6 +398,9 @@ export const CryptoPage = () => {
           <button className={`market-chip ${filter === "losers" ? "market-chip--active" : ""}`} onClick={() => setFilter("losers")}>
             {t("markets.filters.losers")}
           </button>
+          <button className={`market-chip ${filter === "watchlist" ? "market-chip--active" : ""}`} onClick={() => setFilter("watchlist")}>
+            {t("markets.watchlist", { defaultValue: "Watchlist" })}
+          </button>
         </div>
       </div>
 
@@ -359,7 +412,7 @@ export const CryptoPage = () => {
             <p style={{ color: "var(--negative)" }}>{error}</p>
             <button className="primary-button" onClick={() => fetchList(start, true)}>{t("markets.retry")}</button>
           </div>
-        ) : coins.length === 0 ? (
+        ) : sortedCoins.length === 0 ? (
           <p style={{ color: "var(--muted)", textAlign: "center", padding: "2rem 0" }}>{t("markets.noResultsWithDot")}</p>
         ) : (
           <>
@@ -367,6 +420,7 @@ export const CryptoPage = () => {
               <table className="table market-table">
                 <thead>
                   <tr>
+                    <th className="market-favorite-col" aria-label={t("markets.watchlist", { defaultValue: "Watchlist" })} />
                     <th>{t("markets.coin")}</th>
                     <th className="amount-header">{t("markets.price")}</th>
                     <th className="amount-header">{t("markets.change")}</th>
@@ -377,8 +431,23 @@ export const CryptoPage = () => {
                 <tbody>
                   {sortedCoins.map((coin, idx) => {
                     const isUp = (coin.change_percent ?? 0) >= 0
+                    const favorite = isFavorite(coin.symbol)
                     return (
                       <tr key={`${coin.symbol}-${idx}`} className="market-row" onClick={() => void handleSelectCoinSymbol(coin.symbol)}>
+                        <td className="market-favorite-cell">
+                          <button
+                            type="button"
+                            className={`market-star-btn ${favorite ? "market-star-btn--active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleFavorite(coin.symbol)
+                            }}
+                            aria-label={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                            title={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                          >
+                            <Star size={16} fill={favorite ? "currentColor" : "none"} />
+                          </button>
+                        </td>
                         <td>
                           <div className="coin-name-cell">
                             {coin.image ? <img src={coin.image} alt={coin.name} className="coin-icon" width={24} height={24} /> : <div className="coin-icon" style={{width: 24, height: 24, background: 'var(--border)', borderRadius: '50%'}}></div>}
@@ -401,7 +470,7 @@ export const CryptoPage = () => {
                 </tbody>
               </table>
             </div>
-            {hasMore && !query.trim() && (
+            {hasMore && !query.trim() && filter !== "watchlist" && (
               <div className="market-load-more">
                 <button className="primary-button" onClick={handleLoadMore} disabled={loadingMore}>
                   {loadingMore ? t("markets.loading") : t("markets.loadMore", { count: PAGE_SIZE })}
@@ -412,7 +481,14 @@ export const CryptoPage = () => {
         )}
       </div>
 
-      {selectedCoin && <CryptoChartModal coin={selectedCoin} onClose={() => setSelectedCoin(null)} />}
+      {selectedCoin && (
+        <CryptoChartModal
+          coin={selectedCoin}
+          onClose={() => setSelectedCoin(null)}
+          isFavorite={isFavorite}
+          onToggleFavorite={toggleFavorite}
+        />
+      )}
     </section>
   )
 }

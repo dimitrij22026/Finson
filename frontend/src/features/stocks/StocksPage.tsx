@@ -1,4 +1,4 @@
-﻿import { useCallback, useEffect, useRef, useState } from "react"
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 import {
   Area,
@@ -9,10 +9,11 @@ import {
   XAxis,
   YAxis,
 } from "recharts"
-import { Search, TrendingDown, TrendingUp, X } from "lucide-react"
+import { Search, Star, TrendingDown, TrendingUp, X } from "lucide-react"
 import { useTranslation } from "react-i18next"
 
 import { useAuth } from "../../hooks/useAuth"
+import { useWatchlist } from "../../hooks/useWatchlist"
 import { apiClient } from "../../api/client"
 
 // Types
@@ -46,11 +47,11 @@ interface SearchResult {
 
 interface ChartPoint { t: number; price: number }
 
-type Screener = "all" | "day_gainers" | "day_losers" | "most_actives" | "growth_technology_stocks"
+type Screener = "all" | "day_gainers" | "day_losers" | "most_actives" | "growth_technology_stocks" | "watchlist"
 type ChartRange = "1d" | "5d" | "1mo" | "3mo" | "6mo" | "1y" | "5y"
 
 // Constants
-const SCREENERS: Screener[] = ["all", "day_gainers", "day_losers", "most_actives", "growth_technology_stocks"]
+const SCREENERS: Screener[] = ["all", "day_gainers", "day_losers", "most_actives", "growth_technology_stocks", "watchlist"]
 
 const CHART_RANGES: { value: ChartRange; label: string }[] = [
   { value: "1d",  label: "1D" },
@@ -92,7 +93,17 @@ function fmtVol(n: number | null): string {
 }
 
 // Stock Chart Modal
-const StockChartModal = ({ stock, onClose }: { stock: StockRow; onClose: () => void }) => {
+const StockChartModal = ({
+  stock,
+  onClose,
+  isFavorite,
+  onToggleFavorite,
+}: {
+  stock: StockRow
+  onClose: () => void
+  isFavorite: (symbol: string) => boolean
+  onToggleFavorite: (symbol: string) => void
+}) => {
   const { t } = useTranslation()
   const [displayStock, setDisplayStock] = useState<StockRow>(stock)
   const [chartRange, setChartRange] = useState<ChartRange>("1mo")
@@ -148,6 +159,7 @@ const StockChartModal = ({ stock, onClose }: { stock: StockRow; onClose: () => v
   }, [stock.symbol, chartRange, token])
 
   const isUp = (displayStock.change_percent ?? 0) >= 0
+  const favorite = isFavorite(displayStock.symbol)
   const color = isUp ? "#22c55e" : "#fb7185"
   const formatDate = (ts: number) => new Date(ts).toLocaleDateString("en-US", { month: "short", day: "numeric" })
 
@@ -162,7 +174,21 @@ const StockChartModal = ({ stock, onClose }: { stock: StockRow; onClose: () => v
         <div className="modal__header">
           <div className="coin-chart-modal__title">
             <div>
-              <h2>{displayStock.symbol}</h2>
+              <div className="coin-chart-modal__title-main">
+                <h2>{displayStock.symbol}</h2>
+                <button
+                  type="button"
+                  className={`market-star-btn market-star-btn--modal ${favorite ? "market-star-btn--active" : ""}`}
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onToggleFavorite(displayStock.symbol)
+                  }}
+                  aria-label={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                  title={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                >
+                  <Star size={18} fill={favorite ? "currentColor" : "none"} />
+                </button>
+              </div>
               <span className="eyebrow">{displayStock.name} &middot; {displayStock.exchange}</span>
             </div>
           </div>
@@ -241,6 +267,7 @@ export const StocksPage = () => {
   const [searchResults, setSearchResults] = useState<SearchResult[] | null>(null)
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedStock, setSelectedStock] = useState<StockRow | null>(null)
+  const { favoriteSymbols, isFavorite, toggleFavorite } = useWatchlist("stock")
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
 
@@ -285,12 +312,40 @@ export const StocksPage = () => {
     [screener, t, token],
   )
 
+  const fetchWatchlistStocks = useCallback(
+    async (symbols: string[]) => {
+      setLoading(true)
+      setError(null)
+      try {
+        if (symbols.length === 0) {
+          setStocks([])
+          setTotal(0)
+          return
+        }
+
+        const data = await apiClient.get<StockRow[]>(`/market/stocks/quote?symbols=${encodeURIComponent(symbols.join(","))}`, { token })
+        setStocks(data)
+        setTotal(data.length)
+      } catch (e) {
+        setError(e instanceof Error ? e.message : t("markets.failedToLoadStocks"))
+      } finally {
+        setLoading(false)
+        setLoadingMore(false)
+      }
+    },
+    [t, token],
+  )
+
   useEffect(() => {
     setStart(0)
     setSearchResults(null)
     setQuery("")
-    fetchStocks(0, true)
-  }, [screener]) // eslint-disable-line react-hooks/exhaustive-deps
+    if (screener === "watchlist") {
+      void fetchWatchlistStocks(favoriteSymbols)
+      return
+    }
+    void fetchStocks(0, true)
+  }, [favoriteSymbols, fetchStocks, fetchWatchlistStocks, screener])
 
   const handleLoadMore = () => {
     const next = start + PAGE_SIZE
@@ -361,7 +416,7 @@ export const StocksPage = () => {
     [buildFallbackStock, handleStockSelect, stocks, token],
   )
 
-  const hasMore = stocks.length < total
+  const hasMore = screener !== "watchlist" && stocks.length < total
 
   return (
     <section className="market-page">
@@ -413,7 +468,7 @@ export const StocksPage = () => {
         <div className="market-chips">
           {SCREENERS.map((s) => (
             <button key={s} className={`market-chip ${screener === s ? "market-chip--active" : ""}`} onClick={() => setScreener(s)}>
-              {t(`markets.screeners.${s}`)}
+              {s === "watchlist" ? t("markets.watchlist", { defaultValue: "Watchlist" }) : t(`markets.screeners.${s}`)}
             </button>
           ))}
         </div>
@@ -435,6 +490,7 @@ export const StocksPage = () => {
               <table className="table market-table">
                 <thead>
                   <tr>
+                    <th className="market-favorite-col" aria-label={t("markets.watchlist", { defaultValue: "Watchlist" })} />
                     <th>{t("markets.symbol")}</th>
                     <th>{t("markets.name")}</th>
                     <th className="amount-header">{t("markets.price")}</th>
@@ -447,8 +503,23 @@ export const StocksPage = () => {
                 <tbody>
                   {stocks.map((s) => {
                     const isUp = (s.change_percent ?? 0) >= 0
+                    const favorite = isFavorite(s.symbol)
                     return (
                       <tr key={s.symbol} className="market-row" onClick={() => void handleSelectStockSymbol(s.symbol)}>
+                        <td className="market-favorite-cell">
+                          <button
+                            type="button"
+                            className={`market-star-btn ${favorite ? "market-star-btn--active" : ""}`}
+                            onClick={(e) => {
+                              e.stopPropagation()
+                              toggleFavorite(s.symbol)
+                            }}
+                            aria-label={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                            title={favorite ? t("markets.removeFromWatchlist", { defaultValue: "Remove from watchlist" }) : t("markets.addToWatchlist", { defaultValue: "Add to watchlist" })}
+                          >
+                            <Star size={16} fill={favorite ? "currentColor" : "none"} />
+                          </button>
+                        </td>
                         <td><strong className="stock-symbol">{s.symbol}</strong></td>
                         <td className="stock-name-cell">{s.name}</td>
                         <td className="amount-cell">{fmtPrice(s.price)}</td>
@@ -479,7 +550,14 @@ export const StocksPage = () => {
         )}
       </div>
 
-      {selectedStock && <StockChartModal stock={selectedStock} onClose={() => setSelectedStock(null)} />}
+      {selectedStock && (
+        <StockChartModal
+          stock={selectedStock}
+          onClose={() => setSelectedStock(null)}
+          isFavorite={isFavorite}
+          onToggleFavorite={toggleFavorite}
+        />
+      )}
     </section>
   )
 }
