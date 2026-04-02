@@ -320,12 +320,24 @@ export const CryptoPage = () => {
 
       try {
         const data = await apiClient.get<CryptoRow[]>(`/market/crypto/quote?symbols=${encodeURIComponent(symbols.join(","))}`, { token })
-        setWatchlistCoins(data)
+        const bySymbol = new Map(data.map((item) => [item.symbol.toUpperCase(), item]))
+        const fallbackBySymbol = new Map(coins.map((item) => [item.symbol.toUpperCase(), item]))
+
+        const merged = symbols
+          .map((symbol) => bySymbol.get(symbol.toUpperCase()) ?? fallbackBySymbol.get(symbol.toUpperCase()))
+          .filter((item): item is CryptoRow => Boolean(item))
+
+        setWatchlistCoins(merged)
       } catch {
-        setWatchlistCoins([])
+        const fallbackBySymbol = new Map(coins.map((item) => [item.symbol.toUpperCase(), item]))
+        const fallback = symbols
+          .map((symbol) => fallbackBySymbol.get(symbol.toUpperCase()))
+          .filter((item): item is CryptoRow => Boolean(item))
+
+        setWatchlistCoins(fallback)
       }
     },
-    [token],
+    [coins, token],
   )
 
   useEffect(() => {

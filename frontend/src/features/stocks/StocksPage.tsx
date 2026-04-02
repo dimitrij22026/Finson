@@ -268,8 +268,13 @@ export const StocksPage = () => {
   const [searchLoading, setSearchLoading] = useState(false)
   const [selectedStock, setSelectedStock] = useState<StockRow | null>(null)
   const { favoriteSymbols, isFavorite, toggleFavorite } = useWatchlist("stock")
+  const stocksBySymbolRef = useRef<Map<string, StockRow>>(new Map())
 
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  useEffect(() => {
+    stocksBySymbolRef.current = new Map(stocks.map((item) => [item.symbol.toUpperCase(), item]))
+  }, [stocks])
 
   // Fetch stocks from screener
   const fetchStocks = useCallback(
@@ -324,10 +329,27 @@ export const StocksPage = () => {
         }
 
         const data = await apiClient.get<StockRow[]>(`/market/stocks/quote?symbols=${encodeURIComponent(symbols.join(","))}`, { token })
-        setStocks(data)
-        setTotal(data.length)
+        const bySymbol = new Map(data.map((item) => [item.symbol.toUpperCase(), item]))
+        const fallbackBySymbol = stocksBySymbolRef.current
+
+        const merged = symbols
+          .map((symbol) => bySymbol.get(symbol.toUpperCase()) ?? fallbackBySymbol.get(symbol.toUpperCase()))
+          .filter((item): item is StockRow => Boolean(item))
+
+        setStocks(merged)
+        setTotal(merged.length)
       } catch (e) {
-        setError(e instanceof Error ? e.message : t("markets.failedToLoadStocks"))
+        const fallbackBySymbol = stocksBySymbolRef.current
+        const fallback = symbols
+          .map((symbol) => fallbackBySymbol.get(symbol.toUpperCase()))
+          .filter((item): item is StockRow => Boolean(item))
+
+        setStocks(fallback)
+        setTotal(fallback.length)
+
+        if (fallback.length === 0) {
+          setError(e instanceof Error ? e.message : t("markets.failedToLoadStocks"))
+        }
       } finally {
         setLoading(false)
         setLoadingMore(false)
